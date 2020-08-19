@@ -687,7 +687,16 @@ jobs:
             if [ `join /tmp/changed_files /tmp/ci_docker_files | wc -l` == 0 ]; then
               echo no relevant files have changed - halting
               circleci step halt
+            else
+              echo Relevant files have changed, building.
+              #since we're building, time to update the cache key file.
+              date +%Y-%M-%d > /home/circleci/lastbuild
             fi
+      - save_cache:
+          name: store updated daily latch file.
+          key: docker-circleci-lastest-daily-<< parameters.base-image >>
+          paths:
+            - /home/circleci/lastbuild
       - run:
           name: Build/test << parameters.base-image >> docker image file
           command: |
@@ -703,12 +712,6 @@ jobs:
             #signs the pushed image
             docker push --disable-content-trust=false libra/build_environment:<< parameters.base-image >>-latest
             #since we've built, time to update the cache key file.
-            date +%Y-%M-%d > /home/circleci/lastbuild
-      - save_cache:
-          name: store updated daily latch file.
-          key: docker-circleci-lastest-daily-<< parameters.base-image >>
-          paths:
-            - /home/circleci/lastbuild
 
   ######################################################################################################
   # Publish docker artifacts for prs targeting release branches built in "auto" by bors                #
@@ -799,6 +802,12 @@ jobs:
               echo Last build occured today, halting.
               circleci step halt
             fi
+            date +%Y-%M-%d > /home/circleci/lastbuild
+      - save_cache:
+          name: store updated daily latch file.
+          key: code-coverage-daily
+          paths:
+            - /home/circleci/lastbuild
       - aws-cli/configure:
           aws-access-key-id: AWS_ACCESS_KEY_ID
           aws-secret-access-key: AWS_SECRET_ACCESS_KEY
@@ -832,15 +841,6 @@ jobs:
           payload_file: "${MESSAGE_PAYLOAD_FILE}"
           build_url: "${CIRCLE_BUILD_URL}#tests/containers/${CIRCLE_NODE_INDEX}"
           webhook: "${WEBHOOK_COVERAGE_INFO}"
-      - run:
-          name: Update cache key file
-          command: |
-            date +%Y-%M-%d > /home/circleci/lastbuild
-      - save_cache:
-          name: store updated daily latch file.
-          key: code-coverage-daily
-          paths:
-            - /home/circleci/lastbuild
 
 workflows:
   commit-workflow:
@@ -949,8 +949,6 @@ workflows:
                 - /^test-[\d|.]+$/
                 - /^release-[\d|.]+$/
       - code_coverage:
-          requires:
-            - prefetch-crates
           context: libra_ci
           filters:
             branches:
