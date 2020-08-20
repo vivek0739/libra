@@ -21,6 +21,12 @@ jobs:
           echo "::set-env name=LIBRA_GIT_REV::$(git rev-parse --short=8 HEAD)"
           echo "::set-env name=MASTER_GIT_REV::$(git rev-parse --short=8 origin/master)"
           echo "::set-env name=TEST_TAG::land_$(git rev-parse --short=8 HEAD)"
+          commit_message=${{ github.event.head_commit.message }}
+          pr_num=$(echo $commit_message | grep "Closes" | grep -E -o "[0-9]+")
+          if [ $? -ne 0 ]; then
+            echo "Error: could not find the PR number"; exit 1
+          fi
+          echo "::set-env name=PR_NUM::$pr_num"
       - name: Check kill switch
         id: check_ks
         run: |
@@ -115,19 +121,22 @@ jobs:
           echo "cti exit code: $ret"
           echo "::set-env name=CTI_REPRO_CMD::$cmd"
           echo "::set-env name=CTI_EXIT_CODE::$ret"
+          msg_text="*${{ github.job }}* job in ${{ github.workflow }} workflow failed."
           if [ -s "report.json" ]; then
             echo "report.json start"
             cat report.json
             echo "report.json end"
+            msg_text="$msg_text Report:\n$(cat report.json | jq -r .text)"
           else
             echo "report.json is empty or not found."
+            msg_text="$msg_text Report:\nEmpty"
             ret=1
           fi
           if [ $ret -ne 0 ]; then
             jq -n \
-              --arg msg "*${{ github.job }}* job in ${{ github.workflow }} workflow failed.
-          $(tail -5 $CTI_OUTPUT_LOG)" \
+              --arg msg $msg_text \
               --arg url "https://github.com/${{ github.repository }}/actions/runs/${{github.run_id}}" \
+              --arg pr_url "https://github.com/${{ github.repository }}/pull/$PR_NUM" \
             '{
               "attachments": [
                 {
@@ -137,6 +146,11 @@ jobs:
                       "type": "button",
                       "text": "Visit Job",
                       "url": $url
+                    },
+                    {
+                      "type": "button",
+                      "text": "Visit PR",
+                      "url": $pr_url
                     }
                   ]
                 }
@@ -151,13 +165,8 @@ jobs:
           github-token: ${{secrets.GITHUB_TOKEN}}
           script: |
             // Find the number of the pull request that trigggers this push
-            let pr_num = 0;
-            let commit_message = context.payload.head_commit.message;
-            let re = /.*[^]Closes:\s\#(\d+)$/;
-            if (re.test(commit_message)) {
-              let match = re.exec(commit_message);
-              pr_num = match[1];
-            } else {
+            let pr_num = process.env.PR_NUM;
+            if ( pr_num == undefined ) {
               console.warn("Did not find pull request num in commit message. -\\_(O_o)_/-");
               console.log("GH event payload\n", context.payload);
               return;
