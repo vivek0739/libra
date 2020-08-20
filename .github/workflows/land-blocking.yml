@@ -21,7 +21,7 @@ jobs:
           echo "::set-env name=LIBRA_GIT_REV::$(git rev-parse --short=8 HEAD)"
           echo "::set-env name=MASTER_GIT_REV::$(git rev-parse --short=8 origin/master)"
           echo "::set-env name=TEST_TAG::land_$(git rev-parse --short=8 HEAD)"
-          commit_message=${{ github.event.head_commit.message }}
+          commit_message='${{ github.event.head_commit.message }}'
           pr_num=$(echo $commit_message | grep "Closes" | grep -E -o "[0-9]+")
           if [ $? -ne 0 ]; then
             echo "Error: could not find the PR number"; exit 1
